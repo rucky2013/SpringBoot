@@ -1,0 +1,9 @@
+-> exposes Rest using Jersey
+-> connection pooling
+-> Can plug in any type of cache by changing property
+-> Logback to enable logging
+-> Minimal dependency on Spring which we can decouple as well.
+-> Have integration test to assert that cache, rest works.
+
+-> Havent written any unit test. It's just relying upon end to end test that i did.
+-> Havent properly worked on presentation aspect.

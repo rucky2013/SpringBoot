@@ -1,0 +1,156 @@
+<beans xmlns="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context" 
+	xmlns:util="http://www.springframework.org/schema/util"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+					http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+					http://www.springframework.org/schema/context
+            		http://www.springframework.org/schema/context/spring-context-4.0.xsd
+            		http://www.springframework.org/schema/util 
+            		http://www.springframework.org/schema/util/spring-util-3.0.xsd">
+	
+	<context:annotation-config />
+    <context:component-scan base-package="com.resume" />
+    <context:property-placeholder location="classpath:resume-application.properties" />
+    
+	<!-- All http parameters -->
+	<bean id="httpParams" class="org.apache.http.params.BasicHttpParams" />
+	
+	<bean class="org.apache.http.params.HttpConnectionParamBean">
+		<constructor-arg ref="httpParams" />
+		<property name="connectionTimeout" value="${resume.github.connect.timeout:180000}" />
+		<property name="soTimeout" value="${resume.github.socket.timeout:120000}" />
+		<property name="tcpNoDelay" value="false" />
+		<property name="staleCheckingEnabled" value="false" />
+	</bean>
+	
+	<bean class="org.apache.http.params.HttpProtocolParamBean">
+		<constructor-arg ref="httpParams" />
+		<property name="contentCharset" value="UTF-8" />
+		<property name="useExpectContinue" value="false" />
+	</bean>
+	
+	<!-- protocol beans goes here -->
+	
+	<bean id="socketFactory" class="org.apache.http.conn.scheme.PlainSocketFactory" factory-method="getSocketFactory" />
+	
+	<bean id="sslSocketFactory" class="org.apache.http.conn.ssl.SSLSocketFactory" factory-method="getSocketFactory" />
+	
+	<bean id="scheme-http" class="org.apache.http.conn.scheme.Scheme">
+		<constructor-arg value="http" />
+		<constructor-arg ref="socketFactory" />
+		<constructor-arg type="int" value="80" />
+	</bean>
+	
+	<bean id="scheme-https" class="org.apache.http.conn.scheme.Scheme">
+		<constructor-arg value="https" />
+		<constructor-arg ref="sslSocketFactory" />
+		<constructor-arg type="int" value="443" />
+	</bean>
+	
+	<bean id="schemeRegistry" class="org.apache.http.conn.scheme.SchemeRegistry" />
+	
+	<bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+		<property name="targetObject" ref="schemeRegistry" />
+		<property name="targetMethod" value="setItems" />
+		<property name="arguments">
+			<map>
+				<entry key="http" value-ref="scheme-http" />
+				<entry key="https" value-ref="scheme-https" />
+			</map>
+		</property>
+	</bean>
+	
+	<bean id="credentials" class="org.apache.http.auth.UsernamePasswordCredentials">
+		<constructor-arg value="${resume.github.user:eralmas7}" />
+		<constructor-arg value="${resume.github.password}" />
+	</bean>
+	
+	<bean id="retryHandler" class="org.apache.http.impl.client.DefaultHttpRequestRetryHandler">
+		<constructor-arg value="${resume.github.request.retry.count:3}" />
+		<constructor-arg value="${resume.github.request.retry:true}" />
+		<constructor-arg>
+			<list></list>
+		</constructor-arg>
+	</bean>
+	
+	<bean id="authScope" class="org.apache.http.auth.AuthScope">
+		<constructor-arg>
+			<null/>
+		</constructor-arg>
+		<constructor-arg value="-1" />
+		<constructor-arg>
+			<null/>
+		</constructor-arg>
+		<constructor-arg>
+			<null/>
+		</constructor-arg>
+	</bean>
+	
+	<bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+	    <property name="targetObject" ref="credentialProvider" />
+	    <property name="targetMethod" value="setCredentials" />
+	    <property name="arguments">
+	        <list>
+	            <ref bean="authScope" />
+	            <ref bean="credentials" />
+	        </list>
+	    </property>
+	</bean>
+	
+	<bean class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+		<property name="targetObject" ref="httpParams" />
+		<property name="targetMethod" value ="setParameter" />
+		<property name="arguments">
+			<list>
+				<value>http.auth.target-scheme-pref</value>
+				<list><value>Basic</value></list>
+			</list>
+		</property>    
+	</bean>
+	
+	<bean id="credentialProvider" class="org.apache.http.client.CredentialsProvider" factory-method="getCredentialsProvider" factory-bean="httpClient" />
+	
+	<!-- Connection related beans goes here -->
+	<bean id="connectionManager" class="org.apache.http.impl.conn.PoolingClientConnectionManager" destroy-method="shutdown">
+		<constructor-arg ref="schemeRegistry" />
+		<property name="maxTotal" value="${resume.github.max.connection:5}" />
+		<property name="defaultMaxPerRoute" value="${resume.github.max.connection.per.route:3}" />
+	</bean>
+	
+	<bean id="httpClient" class="org.apache.http.impl.client.DefaultHttpClient">
+		<constructor-arg ref="connectionManager" />
+		<constructor-arg ref="httpParams" />
+		<property name="httpRequestRetryHandler" ref="retryHandler" />
+	</bean>
+	
+	<bean id="httpClientRequestFactory" class="com.resume.factory.PreEmptiveAuthHttpRequestFactory">
+		<constructor-arg ref="httpClient" />
+		<constructor-arg ref="credentialProvider" />
+		<property name="connectTimeout" value="${resume.github.connect.timeout:180000}" />
+		<property name="readTimeout" value="${resume.github.socket.timeout:120000}" />
+	</bean>
+	
+	<bean id="restTemplate" class="org.springframework.web.client.RestTemplate">
+		<constructor-arg ref="httpClientRequestFactory"/>
+	</bean>
+	
+	<bean id="repositoryDao" class="com.resume.dao.RepositoryDataDao">
+		<constructor-arg ref="restTemplate"/>
+	</bean>
+	
+	<bean id="userDao" class="com.resume.dao.UserDataDao">
+		<constructor-arg ref="restTemplate"/>
+	</bean>
+	
+	<bean id="languageConverter" class="com.resume.converter.LanguageConverter" />
+	
+	<bean id="systemPropertiesLoader"
+	    class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
+	    <property name="targetObject" value="#{@systemProperties}" />
+	    <property name="targetMethod" value="putAll" />
+	    <property name="arguments">
+	        <util:properties location="classpath:resume-application.properties" />
+	    </property>
+	</bean>
+</beans>
